@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react"
-import { Slot } from "radix-ui"
+import { Slot } from "@radix-ui/react-slot"
 import { Controller, FormProvider, useFormContext, useFormState } from "react-hook-form";
 
 import { cn } from "@/lib/utils"
@@ -82,7 +82,7 @@ function FormControl({
   const { error, formItemId, formDescriptionId, formMessageId } = useFormField()
 
   return (
-    <Slot.Root
+    <Slot
       data-slot="form-control"
       id={formItemId}
       aria-describedby={

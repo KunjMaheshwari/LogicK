@@ -1,9 +1,9 @@
-"use client";
+"use client";;
 import { cn } from "@/lib/utils";
 import { memo } from "react";
 import { Streamdown } from "streamdown";
 
-const Response = memo(({
+export const Response = memo(({
   className,
   ...props
 }) => (
@@ -13,4 +13,3 @@ const Response = memo(({
 ), (prevProps, nextProps) => prevProps.children === nextProps.children);
 
 Response.displayName = "Response";
-export default Response;

@@ -1,8 +1,8 @@
 "use client"
 
 import * as React from "react"
+import * as SelectPrimitive from "@radix-ui/react-select"
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react"
-import { Select as SelectPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 
@@ -50,8 +50,7 @@ function SelectTrigger({
 function SelectContent({
   className,
   children,
-  position = "item-aligned",
-  align = "center",
+  position = "popper",
   ...props
 }) {
   return (
@@ -65,7 +64,6 @@ function SelectContent({
           className
         )}
         position={position}
-        align={align}
         {...props}>
         <SelectScrollUpButton />
         <SelectPrimitive.Viewport
@@ -104,9 +102,7 @@ function SelectItem({
         className
       )}
       {...props}>
-      <span
-        data-slot="select-item-indicator"
-        className="absolute right-2 flex size-3.5 items-center justify-center">
+      <span className="absolute right-2 flex size-3.5 items-center justify-center">
         <SelectPrimitive.ItemIndicator>
           <CheckIcon className="size-4" />
         </SelectPrimitive.ItemIndicator>

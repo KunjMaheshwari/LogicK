@@ -14,10 +14,7 @@ export const onBoardUser = async () => {
       };
     }
 
-    // Proper object destructuring
     const { id, firstName, lastName, imageUrl, emailAddresses } = user;
-
-    const emailAddress = emailAddresses?.[0]?.emailAddress || "";
 
     const newUser = await db.user.upsert({
       where: {
@@ -29,7 +26,7 @@ export const onBoardUser = async () => {
             ? `${firstName} ${lastName}`
             : firstName || lastName || null,
         image: imageUrl || null,
-        email: emailAddress,
+        email: emailAddresses[0]?.emailAddress || "",
       },
       create: {
         clerkId: id,
@@ -38,7 +35,7 @@ export const onBoardUser = async () => {
             ? `${firstName} ${lastName}`
             : firstName || lastName || null,
         image: imageUrl || null,
-        email: emailAddress,
+        email: emailAddresses[0]?.emailAddress || "",
       },
     });
 
@@ -48,7 +45,7 @@ export const onBoardUser = async () => {
       message: "User onboarded successfully",
     };
   } catch (error) {
-    console.error("Error onboarding user:", error);
+    console.error("❌ Error onboarding user:", error);
     return {
       success: false,
       error: "Failed to onboard user",
@@ -60,7 +57,9 @@ export const getCurrentUser = async () => {
   try {
     const user = await currentUser();
 
-    if (!user) return null;
+    if (!user) {
+      return null;
+    }
 
     const dbUser = await db.user.findUnique({
       where: {
@@ -77,7 +76,7 @@ export const getCurrentUser = async () => {
 
     return dbUser;
   } catch (error) {
-    console.error("Error fetching current user:", error);
+    console.error("❌ Error fetching current user:", error);
     return null;
   }
 };

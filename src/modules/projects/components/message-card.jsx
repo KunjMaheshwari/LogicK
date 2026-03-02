@@ -1,12 +1,11 @@
-import { Card } from '@/components/ui/card'
-import { MessageRole, MessageType } from '@prisma/client'
-import { Assistant } from 'next/font/google'
-import React from 'react'
-import { format } from 'date-fns'
-import { cn } from '@/lib/utils'
-import Image from 'next/image'
-import { ChevronRightIcon, Code2Icon } from 'lucide-react'
-import Response from '@/components/ai-elements/response'
+import { Response } from "@/components/ai-elements/response";
+import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
+import { MessageRole, MessageType } from "@prisma/client";
+import { format } from "date-fns";
+import { ChevronRightIcon, Code2Icon } from "lucide-react";
+import Image from "next/image";
+import React from "react";
 
 const FragmentCard = ({ fragment, isActiveFragment, onFragmentClick }) => {
   return (
@@ -34,15 +33,19 @@ const FragmentCard = ({ fragment, isActiveFragment, onFragmentClick }) => {
   );
 };
 
-const UserMessage = ({content})=>{
-    return (
-        <div className='flex justify-end pb-4 pr-2 pl-10'>
-            <Card className={"rounded-lg bg-muted p-2 shadow-none border-none max-w-[80%] break-words"}>
-                {content}
-            </Card>
-        </div>
-    )
-}
+const UserMessage = ({ content }) => {
+  return (
+    <div className="flex justify-end pb-4 pr-2 pl-10">
+      <Card
+        className={
+          "rounded-lg bg-muted p-2 shadow-none border-none max-w-[80%] break-words"
+        }
+      >
+        {content}
+      </Card>
+    </div>
+  );
+};
 
 const AssistantMessage = ({
   content,
@@ -62,7 +65,7 @@ const AssistantMessage = ({
       <div className="flex items-center gap-2 pl-2 mb-2">
         <Image
         
-          alt="LogicK"
+          alt="Vibe"
           src={"/LogicKLogo.svg"}
           height={30}
           width={30}
@@ -74,9 +77,7 @@ const AssistantMessage = ({
       </div>
 
       <div className="pl-8.5 flex flex-col gap-y-4">
-       <div className="prose prose-sm dark:prose-invert max-w-none">
-         <Response>{content}</Response>
-       </div>
+       <Response>{content}</Response>
         {fragment && type === MessageType.RESULT && (
           <FragmentCard
             fragment={fragment}
@@ -89,25 +90,33 @@ const AssistantMessage = ({
   );
 };
 
-const MessageCard = ({ key, content, role, fragment, createdAt, isActiveFragment, onFragmentClick, type }) => {
-    if (role === MessageRole.ASSISTANT) {
-        return (
-            <AssistantMessage
-                content={content}
-                fragment={fragment}
-                createdAt={createdAt}
-                isActiveFragment={isActiveFragment}
-                onFragmentClick={onFragmentClick}
-                type={type}
-            />
-        )
-    }
-
+const MessageCard = ({
+  content,
+  role,
+  fragment,
+  createdAt,
+  isActiveFragment,
+  onFragmentClick,
+  type,
+}) => {
+  if (role === MessageRole.ASSISTANT) {
     return (
-        <div className='mt-5'>
-            <UserMessage content={content} />
-        </div>
-    )
-}
+      <AssistantMessage
+        content={content}
+        fragment={fragment}
+        createdAt={createdAt}
+        isActiveFragment={isActiveFragment}
+        onFragmentClick={onFragmentClick}
+        type={type}
+      />
+    );
+  }
 
-export default MessageCard
+  return (
+    <div className="mt-5">
+      <UserMessage content={content} />
+    </div>
+  );
+};
+
+export default MessageCard;
