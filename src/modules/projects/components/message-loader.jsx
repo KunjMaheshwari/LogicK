@@ -42,7 +42,7 @@ const MessageLoading = () => {
       >
         <Image
           src={"/LogicKLogo.svg"}
-          alt="LogicK"
+          alt="Vibe"
           width={28}
           height={28}
           className="shrink-0 invert dark:invert-0"

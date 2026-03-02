@@ -6,7 +6,7 @@ import {
   createNetwork,
   createState,
 } from "@inngest/agent-kit";
-import { Sandbox } from "e2b";
+import Sandbox from "@e2b/code-interpreter";
 import z from "zod";
 import { FRAGMENT_TITLE_PROMPT, PROMPT, RESPONSE_PROMPT } from "../../prompt";
 import { lastAssistantTextMessageContent } from "./utils";
@@ -18,49 +18,57 @@ export const codeAgentFunction = inngest.createFunction(
   { event: "code-agent/run" },
 
   async ({ event, step }) => {
-
-    const sandboxId = await step.run("create-sandbox", async () => {
+    // Step-1
+    const sandboxId = await step.run("get-sandbox-id", async () => {
+      console.log("🔵 Creating sandbox...");
       const sandbox = await Sandbox.create("kunjmaheshwari2021/logick-v2");
-
-      // Install dependencies
-      await sandbox.commands.run("npm install");
-
-      // Start dev server in background
-      await sandbox.commands.run("npm run dev &");
-
+      console.log("🟢 Sandbox created with ID:", sandbox.sandboxId);
       return sandbox.sandboxId;
     });
 
     const previousMessages = await step.run(
       "get-previous-messages",
-      async () => {
+      async()=>{
+        const formattedMessages = [];
+
         const messages = await db.message.findMany({
-          where: { projectId: event.data.projectId },
-          orderBy: { createdAt: "desc" },
-        });
+          where:{
+            projectId:event.data.projectId
+          },
+          orderBy:{
+            createdAt:"desc"
+          }
+        })
 
-        return messages.map((message) => ({
-          type: "text",
-          role: message.role === "ASSISTANT" ? "assistant" : "user",
-          content: message.content,
-        }));
+        for(const message of messages){
+          formattedMessages.push({
+            type:"text",
+            role:message.role === "ASSISTANT" ? "assistant" : "user",
+            content:message.content
+          })
+        }
+
+        return formattedMessages
       }
-    );
+    )
 
-    const state = createState(
-      { summary: "", files: {} },
-      { messages: previousMessages }
-    );
-
+    const state = createState({
+      summary:"",
+      files:{}
+    }
+  ,
+  {
+    messages:previousMessages
+  }
+)
 
     const codeAgent = createAgent({
       name: "code-agent",
       description: "An expert coding agent",
       system: PROMPT,
       model: gemini({ model: "gemini-2.5-flash" }),
-
       tools: [
-
+        // 1. Terminal
         createTool({
           name: "terminal",
           description: "Use the terminal to run commands",
@@ -68,7 +76,7 @@ export const codeAgentFunction = inngest.createFunction(
             command: z.string(),
           }),
           handler: async ({ command }, { step }) => {
-            return await step.run("terminal", async () => {
+            return await step?.run("terminal", async () => {
               const buffers = { stdout: "", stderr: "" };
 
               try {
@@ -78,23 +86,28 @@ export const codeAgentFunction = inngest.createFunction(
                   onStdout: (data) => {
                     buffers.stdout += data;
                   },
+
                   onStderr: (data) => {
                     buffers.stderr += data;
                   },
                 });
 
-                return result.stdout;
+                return result.stdout || result.stderr || "Command executed.";
               } catch (error) {
-                return `Command failed: ${error}\nstdout: ${buffers.stdout}\nstderr: ${buffers.stderr}`;
+                console.log(
+                  `Command failed: ${error} \n stdout: ${buffers.stdout}\n stderr: ${buffers.stderr}`
+                );
+
+                return `Command failed: ${error} \n stdout: ${buffers.stdout}\n stderr: ${buffers.stderr}`;
               }
             });
           },
         }),
 
-
+        // 2. createOrUpdateFiles
         createTool({
           name: "createOrUpdateFiles",
-          description: "Create or update files in the sandbox",
+          description: "Create or update files in the sanbox",
           parameters: z.object({
             files: z.array(
               z.object({
@@ -103,55 +116,58 @@ export const codeAgentFunction = inngest.createFunction(
               })
             ),
           }),
+
           handler: async ({ files }, { step, network }) => {
-            const newFiles = await step.run(
+            const newFiles = await step?.run(
               "createOrUpdateFiles",
               async () => {
                 try {
-                  const updatedFiles =
-                    network?.state?.data?.files || {};
+                  const updatedFiles = network?.state?.data.files || {};
 
-                  const sandbox = await Sandbox.connect(sandboxId);
+                  const sanbox = await Sandbox.connect(sandboxId);
 
                   for (const file of files) {
-                    await sandbox.files.write(file.path, file.content);
+                    await sanbox.files.write(file.path, file.content);
                     updatedFiles[file.path] = file.content;
                   }
 
                   return updatedFiles;
                 } catch (error) {
-                  return "Error: " + error;
+                  return "Error" + error;
                 }
               }
             );
 
             if (typeof newFiles === "object") {
               network.state.data.files = newFiles;
+              return newFiles;
             }
+
+            return newFiles;
           },
         }),
-
-
+        // 3. readFiles
         createTool({
           name: "readFiles",
           description: "Read files in the sandbox",
+
           parameters: z.object({
             files: z.array(z.string()),
           }),
           handler: async ({ files }, { step }) => {
-            return await step.run("readFiles", async () => {
+            return await step?.run("readFiles", async () => {
               try {
-                const sandbox = await Sandbox.connect(sandboxId);
+                const sanbox = await Sandbox.connect(sandboxId);
+
                 const contents = [];
 
                 for (const file of files) {
-                  const content = await sandbox.files.read(file);
+                  const content = await sanbox.files.read(file);
                   contents.push({ path: file, content });
                 }
-
                 return JSON.stringify(contents);
               } catch (error) {
-                return "Error: " + error;
+                return "Error" + error;
               }
             });
           },
@@ -163,12 +179,10 @@ export const codeAgentFunction = inngest.createFunction(
           const lastAssistantMessageText =
             lastAssistantTextMessageContent(result);
 
-          if (
-            lastAssistantMessageText &&
-            network &&
-            lastAssistantMessageText.includes("<task_summary>")
-          ) {
-            network.state.data.summary = lastAssistantMessageText;
+          if (lastAssistantMessageText && network) {
+            if (lastAssistantMessageText.includes("<task_summary>")) {
+              network.state.data.summary = lastAssistantMessageText;
+            }
           }
 
           return result;
@@ -179,107 +193,114 @@ export const codeAgentFunction = inngest.createFunction(
     const network = createNetwork({
       name: "coding-agent-network",
       agents: [codeAgent],
-      maxIter: 10,
+      maxIter: 5,
+
       router: async ({ network }) => {
         const summary = network.state.data.summary;
-        if (summary) return;
+
+        if (summary) {
+          return;
+        }
+
         return codeAgent;
       },
     });
 
-    const result = await network.run(event.data.value, { state });
-
-    await step.run("wait-for-server", async () => {
-      const sandbox = await Sandbox.connect(sandboxId);
-
-      for (let i = 0; i < 20; i++) {
-        try {
-          await sandbox.commands.run("curl -s http://localhost:3000");
-          break;
-        } catch {
-          await new Promise((r) => setTimeout(r, 2000));
-        }
-      }
-    });
-
+    const result = await network.run(event.data.value , {state});
+    console.log("🟡 Network run completed");
+    console.log("🟡 Summary:", result.state.data.summary);
+    console.log("🟡 Files generated:", Object.keys(result.state.data.files || {}));
 
     const fragmentTitleGenerator = createAgent({
-      name: "fragment-title-generator",
-      description: "Generate a title",
-      system: FRAGMENT_TITLE_PROMPT,
-      model: gemini({ model: "gemini-2.5-flash" }),
-    });
+      name:"fragment-title-generator",
+      description:"Generate a title for the fragment",
+      system:FRAGMENT_TITLE_PROMPT,
+      model:gemini({model:"gemini-2.5-flash"})
+    })
 
     const responseGenerator = createAgent({
       name: "response-generator",
-      description: "Generate a response",
+      description: "Generate a response for the fragment",
       system: RESPONSE_PROMPT,
-      model: gemini({ model: "gemini-2.5-flash" }),
+      model: gemini({ model: "gemini-2.5-flash" })
     });
 
-    const { output: fragmentTitleOutput } =
-      await fragmentTitleGenerator.run(result.state.data.summary);
 
-    const { output: responseOutput } =
-      await responseGenerator.run(result.state.data.summary);
+    const {output:fragmentTitleOutput} = await fragmentTitleGenerator.run(result.state.data.summary)
+    const {output:responseOutput} = await responseGenerator.run(
+      result.state.data.summary
+    )
 
-    const generateFragmentTitle = () => {
-      if (!fragmentTitleOutput?.[0] || fragmentTitleOutput[0].type !== "text")
-        return "Untitled";
+    const generateFragmentTitle = ()=>{
+      if(fragmentTitleOutput[0].type !=="text"){
+        return "Untitled"
+      }
 
-      return Array.isArray(fragmentTitleOutput[0].content)
-        ? fragmentTitleOutput[0].content.join("")
-        : fragmentTitleOutput[0].content;
-    };
+      if(Array.isArray(fragmentTitleOutput[0].content)){
+            return fragmentTitleOutput[0].content.map((c) => c).join("");
+      }
+      else{
+        return fragmentTitleOutput[0].content
+      }
+    }
 
-    const generateResponse = () => {
-      if (!responseOutput?.[0] || responseOutput[0].type !== "text")
+    const generateResponse = ()=>{
+       if (responseOutput[0].type !== "text") {
         return "Here you go";
+      }
 
-      return Array.isArray(responseOutput[0].content)
-        ? responseOutput[0].content.join("")
-        : responseOutput[0].content;
-    };
+      if (Array.isArray(responseOutput[0].content)) {
+        return responseOutput[0].content.map((c) => c).join("");
+      } else {
+        return responseOutput[0].content;
+      }
+    }
 
     const isError =
       !result.state.data.summary ||
       Object.keys(result.state.data.files || {}).length === 0;
 
     const sandboxUrl = await step.run("get-sandbox-url", async () => {
+      console.log("🔵 Connecting to sandbox for URL...");
       const sandbox = await Sandbox.connect(sandboxId);
       const host = sandbox.getHost(3000);
-      return `http://${host}`;
+      const url = `http://${host}`;
+      console.log("🟢 Sandbox URL generated:", url);
+      return url;
     });
 
-
-    await step.run("save-result", async () => {
-      if (isError) {
+    await step.run("save-result" , async()=>{
+      if(isError){
+        console.log("🔴 Error detected. Saving ERROR message to DB");
         return await db.message.create({
-          data: {
-            projectId: event.data.projectId,
-            content: "Something went wrong. Please try again",
-            role: MessageRole.ASSISTANT,
-            type: MessageType.ERROR,
-          },
-        });
+          data:{
+            projectId:event.data.projectId,
+            content:"Something went wrong. Please try again",
+            role:MessageRole.ASSISTANT,
+            type:MessageType.ERROR
+          }
+        })
       }
 
+      console.log("🟣 Saving RESULT message to DB");
       return await db.message.create({
-        data: {
-          projectId: event.data.projectId,
-          content: generateResponse(),
-          role: MessageRole.ASSISTANT,
-          type: MessageType.RESULT,
-          fragments: {
-            create: {
-              sandboxUrl,
-              title: generateFragmentTitle(),
-              files: result.state.data.files,
-            },
-          },
-        },
-      });
-    });
+        data:{
+          projectId:event.data.projectId,
+          content:generateResponse(),
+          role:MessageRole.ASSISTANT,
+          type:MessageType.RESULT,
+          fragments:{
+            create:{
+              sandboxUrl:sandboxUrl,
+              title:generateFragmentTitle(),
+              files:result.state.data.files
+            }
+          }
+        }
+      })
+    })
+
+   
 
     return {
       url: sandboxUrl,
