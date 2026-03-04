@@ -1,8 +1,9 @@
 "use client";
 import { useForm } from "react-hook-form";
+import { useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import TextAreaAutosize from "react-textarea-autosize";
-import { ArrowUpIcon, Loader2Icon } from "lucide-react";
+import { ArrowUpIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useState } from "react";
@@ -12,7 +13,6 @@ import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Form, FormField } from "@/components/ui/form";
-import { onInvoke } from "../actions";
 import { useCreateProject } from "@/modules/projects/hooks/project";
 
 // import { onInvoke } from "../actions";
@@ -41,7 +41,7 @@ const PROJECT_TEMPLATES = [
     emoji: "📋",
     title: "Build a kanban board",
     prompt:
-      "Build a kanban board with drag-and-drop using react-beautiful-dnd and support for adding and removing tasks with local state. Use consistent spacing, column widths, and hover effects for a polished UI.",
+      "Build a kanban board with drag-and-drop using @dnd-kit/core and @dnd-kit/sortable, with support for adding and removing tasks using local state. Use consistent spacing, column widths, and hover effects for a polished UI.",
   },
   {
     emoji: "🗂️",
@@ -87,6 +87,11 @@ const ProjectsForm = () => {
     },
     mode:"onChange"
   });
+  const contentValue = useWatch({
+    control: form.control,
+    name: "content",
+    defaultValue: "",
+  });
 
   const handleTemplate = (prompt) => {
     form.setValue("content", prompt);
@@ -104,7 +109,7 @@ const ProjectsForm = () => {
   };
 
 
-  const isButtonDisabled = isPending || !form.watch("content").trim()
+  const isButtonDisabled = isPending || !contentValue.trim()
 
   return (
     <div className="space-y-8">
