@@ -74,7 +74,7 @@ const MessageContainer = ({ projectId, activeFragment, setActiveFragment }) => {
   }
 
   const lastMessage = messages[messages.length - 1];
-  const isLastMessageUser = lastMessage.role === MessageRole.USER
+  const isLastMessageUser = lastMessage.role === MessageRole.User
 
   return (
     <div className="flex flex-col flex-1 min-h-0">

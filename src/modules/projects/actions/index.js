@@ -11,24 +11,21 @@ export const createProject = async (value) => {
   const user = await getCurrentUser();
 
   if (!user) throw new Error("Unauthorized");
+  if (!value?.trim()) throw new Error("Project description is required");
 
 
 
   try {
     await consumeCredits();
   } catch (error) {
-      if(error instanceof Error) {
-      throw new Error({
-      code:"BAD_REQUEST",
-        message:"Something went wrong"
-      })
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "remainingPoints" in error
+    ) {
+      throw new Error("Too many requests. Please try again later.");
     }
-    else{
-      throw new Error({
-        code:"TOO_MANY_REQUESTS",
-        message:"Too many requests"
-      })
-    }
+    throw new Error("Unable to create project right now.");
   }
 
   const newProject = await db.project.create({
@@ -38,7 +35,7 @@ export const createProject = async (value) => {
       messages: {
         create: {
           content: value,
-          role: MessageRole.USER,
+          role: MessageRole.User,
           type: MessageType.RESULT,
         },
       },
@@ -76,8 +73,9 @@ export const getProjects = async () => {
 export const getProjectById = async (projectId) => {
   const user = await getCurrentUser();
   if (!user) throw new Error("Unauthorized");
+  if (!projectId) throw new Error("Project ID is required");
 
-  const project = await db.project.findUnique({
+  const project = await db.project.findFirst({
     where: {
       id: projectId,
       userId: user.id,

@@ -13,18 +13,42 @@ import { lastAssistantTextMessageContent } from "./utils";
 import db from "@/lib/db";
 import { MessageRole, MessageType } from "@prisma/client";
 
+const isAbsolutePath = (filePath) =>
+  filePath.startsWith("/") || /^[A-Za-z]:\\/.test(filePath);
+
+const toRelativeSandboxPath = (filePath) => {
+  const normalized = filePath.replace(/^\/home\/user\//, "").replace(/^\.?\//, "");
+  if (!normalized || isAbsolutePath(normalized) || normalized.startsWith("..")) {
+    throw new Error(`Invalid file path "${filePath}". Use relative paths only.`);
+  }
+  return normalized;
+};
+
+const extractTextOutput = (output, fallbackValue) => {
+  const first = output?.[0];
+  if (!first || first.type !== "text") return fallbackValue;
+  if (Array.isArray(first.content)) {
+    return first.content
+      .map((item) => (typeof item === "string" ? item : item?.text ?? ""))
+      .join("")
+      .trim() || fallbackValue;
+  }
+  return String(first.content || fallbackValue).trim();
+};
+
 export const codeAgentFunction = inngest.createFunction(
   { id: "code-agent" },
   { event: "code-agent/run" },
 
   async ({ event, step }) => {
-    // Step-1
-    const sandboxId = await step.run("get-sandbox-id", async () => {
-      console.log("🔵 Creating sandbox...");
-      const sandbox = await Sandbox.create("kunjmaheshwari2021/logick-v2");
-      console.log("🟢 Sandbox created with ID:", sandbox.sandboxId);
-      return sandbox.sandboxId;
-    });
+    try {
+      // Step-1
+      const sandboxId = await step.run("get-sandbox-id", async () => {
+        console.log("🔵 Creating sandbox...");
+        const sandbox = await Sandbox.create("kunjmaheshwari2021/logick-v2");
+        console.log("🟢 Sandbox created with ID:", sandbox.sandboxId);
+        return sandbox.sandboxId;
+      });
 
     const previousMessages = await step.run(
       "get-previous-messages",
@@ -36,7 +60,7 @@ export const codeAgentFunction = inngest.createFunction(
             projectId:event.data.projectId
           },
           orderBy:{
-            createdAt:"desc"
+            createdAt:"asc"
           }
         })
 
@@ -75,32 +99,30 @@ export const codeAgentFunction = inngest.createFunction(
           parameters: z.object({
             command: z.string(),
           }),
-          handler: async ({ command }, { step }) => {
-            return await step?.run("terminal", async () => {
-              const buffers = { stdout: "", stderr: "" };
+          handler: async ({ command }) => {
+            const buffers = { stdout: "", stderr: "" };
 
-              try {
-                const sandbox = await Sandbox.connect(sandboxId);
+            try {
+              const sandbox = await Sandbox.connect(sandboxId);
 
-                const result = await sandbox.commands.run(command, {
-                  onStdout: (data) => {
-                    buffers.stdout += data;
-                  },
+              const result = await sandbox.commands.run(command, {
+                onStdout: (data) => {
+                  buffers.stdout += data;
+                },
 
-                  onStderr: (data) => {
-                    buffers.stderr += data;
-                  },
-                });
+                onStderr: (data) => {
+                  buffers.stderr += data;
+                },
+              });
 
-                return result.stdout || result.stderr || "Command executed.";
-              } catch (error) {
-                console.log(
-                  `Command failed: ${error} \n stdout: ${buffers.stdout}\n stderr: ${buffers.stderr}`
-                );
+              return result.stdout || result.stderr || "Command executed.";
+            } catch (error) {
+              console.log(
+                `Command failed: ${error} \n stdout: ${buffers.stdout}\n stderr: ${buffers.stderr}`
+              );
 
-                return `Command failed: ${error} \n stdout: ${buffers.stdout}\n stderr: ${buffers.stderr}`;
-              }
-            });
+              return `Command failed: ${error} \n stdout: ${buffers.stdout}\n stderr: ${buffers.stderr}`;
+            }
           },
         }),
 
@@ -117,33 +139,25 @@ export const codeAgentFunction = inngest.createFunction(
             ),
           }),
 
-          handler: async ({ files }, { step, network }) => {
-            const newFiles = await step?.run(
-              "createOrUpdateFiles",
-              async () => {
-                try {
-                  const updatedFiles = network?.state?.data.files || {};
+          handler: async ({ files }, { network }) => {
+            try {
+              const updatedFiles = network?.state?.data.files || {};
+              const sandbox = await Sandbox.connect(sandboxId);
 
-                  const sanbox = await Sandbox.connect(sandboxId);
-
-                  for (const file of files) {
-                    await sanbox.files.write(file.path, file.content);
-                    updatedFiles[file.path] = file.content;
-                  }
-
-                  return updatedFiles;
-                } catch (error) {
-                  return "Error" + error;
-                }
+              for (const file of files) {
+                const relativePath = toRelativeSandboxPath(file.path);
+                await sandbox.files.write(relativePath, file.content);
+                updatedFiles[relativePath] = file.content;
               }
-            );
 
-            if (typeof newFiles === "object") {
-              network.state.data.files = newFiles;
-              return newFiles;
+              if (network) {
+                network.state.data.files = updatedFiles;
+              }
+              return updatedFiles;
+            } catch (error) {
+              return "Error: " + error;
             }
 
-            return newFiles;
           },
         }),
         // 3. readFiles
@@ -154,22 +168,19 @@ export const codeAgentFunction = inngest.createFunction(
           parameters: z.object({
             files: z.array(z.string()),
           }),
-          handler: async ({ files }, { step }) => {
-            return await step?.run("readFiles", async () => {
-              try {
-                const sanbox = await Sandbox.connect(sandboxId);
+          handler: async ({ files }) => {
+            try {
+              const sandbox = await Sandbox.connect(sandboxId);
+              const contents = [];
 
-                const contents = [];
-
-                for (const file of files) {
-                  const content = await sanbox.files.read(file);
-                  contents.push({ path: file, content });
-                }
-                return JSON.stringify(contents);
-              } catch (error) {
-                return "Error" + error;
+              for (const file of files) {
+                const content = await sandbox.files.read(file);
+                contents.push({ path: file, content });
               }
-            });
+              return JSON.stringify(contents);
+            } catch (error) {
+              return "Error: " + error;
+            }
           },
         }),
       ],
@@ -211,54 +222,42 @@ export const codeAgentFunction = inngest.createFunction(
     console.log("🟡 Summary:", result.state.data.summary);
     console.log("🟡 Files generated:", Object.keys(result.state.data.files || {}));
 
-    const fragmentTitleGenerator = createAgent({
-      name:"fragment-title-generator",
-      description:"Generate a title for the fragment",
-      system:FRAGMENT_TITLE_PROMPT,
-      model:gemini({model:"gemini-2.5-flash"})
-    })
-
-    const responseGenerator = createAgent({
-      name: "response-generator",
-      description: "Generate a response for the fragment",
-      system: RESPONSE_PROMPT,
-      model: gemini({ model: "gemini-2.5-flash" })
-    });
-
-
-    const {output:fragmentTitleOutput} = await fragmentTitleGenerator.run(result.state.data.summary)
-    const {output:responseOutput} = await responseGenerator.run(
-      result.state.data.summary
-    )
-
-    const generateFragmentTitle = ()=>{
-      if(fragmentTitleOutput[0].type !=="text"){
-        return "Untitled"
-      }
-
-      if(Array.isArray(fragmentTitleOutput[0].content)){
-            return fragmentTitleOutput[0].content.map((c) => c).join("");
-      }
-      else{
-        return fragmentTitleOutput[0].content
-      }
-    }
-
-    const generateResponse = ()=>{
-       if (responseOutput[0].type !== "text") {
-        return "Here you go";
-      }
-
-      if (Array.isArray(responseOutput[0].content)) {
-        return responseOutput[0].content.map((c) => c).join("");
-      } else {
-        return responseOutput[0].content;
-      }
-    }
+    const summaryText =
+      result.state.data.summary || lastAssistantTextMessageContent(result) || "";
 
     const isError =
-      !result.state.data.summary ||
       Object.keys(result.state.data.files || {}).length === 0;
+
+    let fragmentTitle = "Untitled";
+    let responseText = "Here you go";
+
+    if (!isError) {
+      const fragmentTitleGenerator = createAgent({
+        name: "fragment-title-generator",
+        description: "Generate a title for the fragment",
+        system: FRAGMENT_TITLE_PROMPT,
+        model: gemini({ model: "gemini-2.5-flash" }),
+      });
+
+      const responseGenerator = createAgent({
+        name: "response-generator",
+        description: "Generate a response for the fragment",
+        system: RESPONSE_PROMPT,
+        model: gemini({ model: "gemini-2.5-flash" }),
+      });
+
+      try {
+        const { output: fragmentTitleOutput } =
+          await fragmentTitleGenerator.run(summaryText);
+        const { output: responseOutput } =
+          await responseGenerator.run(summaryText);
+
+        fragmentTitle = extractTextOutput(fragmentTitleOutput, "Untitled");
+        responseText = extractTextOutput(responseOutput, "Here you go");
+      } catch (error) {
+        console.error("Failed to generate title/response", error);
+      }
+    }
 
     const sandboxUrl = await step.run("get-sandbox-url", async () => {
       console.log("🔵 Connecting to sandbox for URL...");
@@ -286,13 +285,13 @@ export const codeAgentFunction = inngest.createFunction(
       return await db.message.create({
         data:{
           projectId:event.data.projectId,
-          content:generateResponse(),
+          content:responseText,
           role:MessageRole.ASSISTANT,
           type:MessageType.RESULT,
           fragments:{
             create:{
               sandboxUrl:sandboxUrl,
-              title:generateFragmentTitle(),
+              title:fragmentTitle,
               files:result.state.data.files
             }
           }
@@ -302,11 +301,25 @@ export const codeAgentFunction = inngest.createFunction(
 
    
 
-    return {
-      url: sandboxUrl,
-      title: "Untitled",
-      files: result.state.data.files,
-      summary: result.state.data.summary,
-    };
+      return {
+        url: sandboxUrl,
+        title: fragmentTitle,
+        files: result.state.data.files,
+        summary: summaryText,
+      };
+    } catch (error) {
+      console.error("code-agent failure", error);
+      await step.run("save-unhandled-error", async () => {
+        return db.message.create({
+          data: {
+            projectId: event.data.projectId,
+            content: "Something went wrong. Please try again",
+            role: MessageRole.ASSISTANT,
+            type: MessageType.ERROR,
+          },
+        });
+      });
+      throw error;
+    }
   }
 );

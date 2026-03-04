@@ -28,6 +28,7 @@ export const Usage = () => {
 
   const points = data?.remainingPoints ?? 0;
   const msBeforeNext = data?.msBeforeNext ?? 0;
+  const resetTime = new Date(new Date().getTime() + msBeforeNext);
 
   return (
     <div className="rounded-t-xl bg-background border border-b-0 p-2.5">
@@ -39,7 +40,7 @@ export const Usage = () => {
             {formatDuration(
               intervalToDuration({
                 start: new Date(),
-                end: new Date(Date.now() + msBeforeNext),
+                end: resetTime,
               }),
               { format: ["months", "days", "hours"] }
             )}

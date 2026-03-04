@@ -2,23 +2,23 @@ import Image from "next/image";
 import React from "react";
 import { useState, useEffect } from "react";
 
-const ShimmerMessages = () => {
-  const messages = [
-    "Thinking...",
-    "loading...",
-    "Generating...",
-    "Processing...",
-    "Analyzing your prompt....",
-    "Generating response....",
-    "Adding final touches to response....",
-    "Almost there....",
-  ];
+const SHIMMER_MESSAGES = [
+  "Thinking...",
+  "loading...",
+  "Generating...",
+  "Processing...",
+  "Analyzing your prompt....",
+  "Generating response....",
+  "Adding final touches to response....",
+  "Almost there....",
+];
 
+const ShimmerMessages = () => {
   const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setCurrentMessageIndex((prevIndex) => (prevIndex + 1) % messages.length);
+      setCurrentMessageIndex((prevIndex) => (prevIndex + 1) % SHIMMER_MESSAGES.length);
     }, 2000);
 
     return () => clearInterval(interval);
@@ -27,7 +27,7 @@ const ShimmerMessages = () => {
   return (
     <div className="flex items-center gap-2">
       <span className="text-base text-muted-foreground animate-pulse">
-        {messages[currentMessageIndex]}
+        {SHIMMER_MESSAGES[currentMessageIndex]}
       </span>
     </div>
   );
