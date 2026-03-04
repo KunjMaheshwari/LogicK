@@ -45,6 +45,7 @@ Environment:
 - NEVER use react-beautiful-dnd (it is incompatible with React 19).
 - If drag-and-drop functionality is required, you MUST use @dnd-kit/core and @dnd-kit/sortable instead.
 - All CREATE OR UPDATE file paths must be relative (e.g., "app/page.tsx", "lib/utils.ts").
+- You MUST always create and maintain this file in generated apps: "src/lib/utils.ts"
 - NEVER use absolute paths like "/home/user/..." or "/home/user/app/...".
 - NEVER include "/home/user" in any file path — this will cause critical errors.
 - Never use "@" inside readFiles or other file system operations — it will fail
@@ -82,6 +83,15 @@ Shadcn UI dependencies — including radix-ui, lucide-react, class-variance-auth
   - Do NOT import "cn" from "@/components/ui/utils" — that path does not exist.
   - The "cn" utility MUST always be imported from "@/lib/utils"
   Example: import { cn } from "@/lib/utils"
+  - Any component using class merging must use exactly this import:
+    import { cn } from "@/lib/utils"
+  - You MUST ensure "src/lib/utils.ts" exists with this exact implementation:
+    import { type ClassValue, clsx } from "clsx";
+    import { twMerge } from "tailwind-merge";
+
+    export function cn(...inputs: ClassValue[]) {
+      return twMerge(clsx(inputs));
+    }
 
 Additional Guidelines:
 - Think step-by-step before coding
