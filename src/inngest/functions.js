@@ -13,6 +13,15 @@ import { lastAssistantTextMessageContent } from "./utils";
 import db from "@/lib/db";
 import { MessageRole, MessageType } from "@prisma/client";
 
+const SHADCN_UTILS_PATH = "src/lib/utils.ts";
+const SHADCN_UTILS_CONTENT = `import { type ClassValue, clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+`;
+
 const isAbsolutePath = (filePath) =>
   filePath.startsWith("/") || /^[A-Za-z]:\\/.test(filePath);
 
@@ -150,6 +159,11 @@ export const codeAgentFunction = inngest.createFunction(
                 updatedFiles[relativePath] = file.content;
               }
 
+              if (!updatedFiles[SHADCN_UTILS_PATH]) {
+                await sandbox.files.write(SHADCN_UTILS_PATH, SHADCN_UTILS_CONTENT);
+                updatedFiles[SHADCN_UTILS_PATH] = SHADCN_UTILS_CONTENT;
+              }
+
               if (network) {
                 network.state.data.files = updatedFiles;
               }
@@ -225,8 +239,18 @@ export const codeAgentFunction = inngest.createFunction(
     const summaryText =
       result.state.data.summary || lastAssistantTextMessageContent(result) || "";
 
-    const isError =
-      Object.keys(result.state.data.files || {}).length === 0;
+    const generatedFiles = result.state.data.files || {};
+    const hasAppFiles = Object.keys(generatedFiles).some(
+      (filePath) => filePath !== SHADCN_UTILS_PATH
+    );
+    const isError = !hasAppFiles;
+
+    if (!isError && !generatedFiles[SHADCN_UTILS_PATH]) {
+      const sandbox = await Sandbox.connect(sandboxId);
+      await sandbox.files.write(SHADCN_UTILS_PATH, SHADCN_UTILS_CONTENT);
+      generatedFiles[SHADCN_UTILS_PATH] = SHADCN_UTILS_CONTENT;
+      result.state.data.files = generatedFiles;
+    }
 
     let fragmentTitle = "Untitled";
     let responseText = "Here you go";
