@@ -36,24 +36,29 @@ export const createMessages = async (value, projectId) => {
     throw new Error("Unable to process your request right now.");
   }
 
-  const newMessage = await db.message.create({
-    data: {
-      projectId: projectId,
-      content: value,
-      role: MessageRole.User,
-      type: MessageType.RESULT,
-    },
-  });
+  try {
+    const newMessage = await db.message.create({
+      data: {
+        projectId: projectId,
+        content: value,
+        role: MessageRole.User,
+        type: MessageType.RESULT,
+      },
+    });
 
-  await inngest.send({
-    name: "code-agent/run",
-    data: {
-      value: value,
-      projectId: projectId,
-    },
-  });
+    await inngest.send({
+      name: "code-agent/run",
+      data: {
+        value: value,
+        projectId: projectId,
+      },
+    });
 
-  return newMessage;
+    return newMessage;
+  } catch (error) {
+    console.error("Failed to create message or trigger workflow", error);
+    throw new Error("Unable to process message right now.");
+  }
 };
 
 export const getMessages = async (projectId) => {
@@ -76,7 +81,7 @@ export const getMessages = async (projectId) => {
         projectId
     },
     orderBy:{
-        updatedAt:"asc"
+        createdAt:"asc"
     },
     include:{
         fragments:true

@@ -28,29 +28,34 @@ export const createProject = async (value) => {
     throw new Error("Unable to create project right now.");
   }
 
-  const newProject = await db.project.create({
-    data: {
-      name: generateSlug(2, { format: "kebab" }),
-      userId: user.id,
-      messages: {
-        create: {
-          content: value,
-          role: MessageRole.User,
-          type: MessageType.RESULT,
+  try {
+    const newProject = await db.project.create({
+      data: {
+        name: generateSlug(2, { format: "kebab" }),
+        userId: user.id,
+        messages: {
+          create: {
+            content: value,
+            role: MessageRole.User,
+            type: MessageType.RESULT,
+          },
         },
       },
-    },
-  });
+    });
 
-  await inngest.send({
-    name: "code-agent/run",
-    data: {
-      value: value,
-      projectId: newProject.id,
-    },
-  });
+    await inngest.send({
+      name: "code-agent/run",
+      data: {
+        value: value,
+        projectId: newProject.id,
+      },
+    });
 
-  return newProject;
+    return newProject;
+  } catch (error) {
+    console.error("Failed to create project or trigger workflow", error);
+    throw new Error("Unable to create project right now.");
+  }
 };
 
 export const getProjects = async () => {

@@ -1,11 +1,30 @@
 
-export function lastAssistantTextMessageContent(result){
-    const lastAssistantTextMessageIndex = result.output.findLastIndex(
-        (message) => message.role === "assistant"
-    )
+export function lastAssistantTextMessageContent(result) {
+  const messages = Array.isArray(result?.output) ? result.output : [];
 
-    const message = result.output[lastAssistantTextMessageIndex] 
+  const lastAssistantTextMessageIndex = messages.findLastIndex(
+    (message) => message?.role === "assistant"
+  );
 
+  if (lastAssistantTextMessageIndex < 0) {
+    return "";
+  }
 
-    return message?.content ? typeof message.content === "string" ? message.content : message.content.map((c)=>c.text).join("") : undefined
+  const message = messages[lastAssistantTextMessageIndex];
+
+  if (!message?.content) {
+    return "";
+  }
+
+  if (typeof message.content === "string") {
+    return message.content;
+  }
+
+  if (Array.isArray(message.content)) {
+    return message.content
+      .map((c) => (typeof c === "string" ? c : c?.text || ""))
+      .join("");
+  }
+
+  return "";
 }

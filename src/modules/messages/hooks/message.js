@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createMessages, getMessages } from "../actions";
+import { MessageRole } from "@prisma/client";
 
 
 export const prefetchMessages = async(queryClient , projectId)=>{
@@ -15,8 +16,14 @@ export const useGetMessages = (projectId)=>{
         queryKey:["messages" , projectId],
         queryFn:()=>getMessages(projectId),
         staleTime:10000,
-        refetchInterval:(data)=>{
-            return data?.length ? 5000 : false;
+        refetchInterval:(query)=>{
+            const messages = query.state.data;
+            if(!Array.isArray(messages) || messages.length === 0){
+                return false;
+            }
+
+            const lastMessage = messages[messages.length - 1];
+            return lastMessage?.role === MessageRole.User ? 2000 : false;
         }
     })
 }
