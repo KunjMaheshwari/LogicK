@@ -6,13 +6,15 @@ import { Hint } from "@/components/ui/hint";
 const FragmentWeb = ({ data }) => {
   const [fragmentKey, setFragmentKey] = useState(0);
   const [copied, setCopied] = useState(false);
+  const previewUrl = data?.sandboxUrl?.replace(/^http:\/\//, "https://");
 
   const onRefresh = () => {
     setFragmentKey((prev) => prev + 1);
   };
 
   const onCopy = () => {
-    navigator.clipboard.writeText(data.sandboxUrl);
+    if (!previewUrl) return;
+    navigator.clipboard.writeText(previewUrl);
     setCopied(true);
     setTimeout(() => {
       setCopied(false);
@@ -36,10 +38,10 @@ const FragmentWeb = ({ data }) => {
             size={"sm"}
             variant={"outline"}
             onClick={onCopy}
-            disabled={!data.sandboxUrl || copied}
+            disabled={!previewUrl || copied}
             className={"flex-1 justify-start text-start font-normal"}
           >
-            <span className="truncate">{data.sandboxUrl}</span>
+            <span className="truncate">{previewUrl}</span>
           </Button>
         </Hint>
 
@@ -48,9 +50,9 @@ const FragmentWeb = ({ data }) => {
             size={"sm"}
             variant={"outline"}
             onClick={() => {
-              if (!data.sandboxUrl) return;
+              if (!previewUrl) return;
 
-              window.open(data.sandboxUrl, "_blank");
+              window.open(previewUrl, "_blank", "noopener,noreferrer");
             }}
           >
             <ExternalLink />
@@ -58,11 +60,11 @@ const FragmentWeb = ({ data }) => {
         </Hint>
       </div>
       <iframe
-      key={fragmentKey}
-      className="h-full w-full"
-      sandbox="allow-scripts allow-same-origin "
+      key={`${previewUrl || "blank"}-${fragmentKey}`}
+      className="w-full h-[calc(100vh-12rem)] border-0"
+      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
       loading="lazy"
-      src={data.sandboxUrl}
+      src={previewUrl || "about:blank"}
       />
     </div>
   );

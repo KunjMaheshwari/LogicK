@@ -145,7 +145,7 @@ export const FileExplorer = ({ files }) => {
           <div className="h-full w-full flex flex-col">
             <div className="border-b bg-sidebar/50 px-4 py-2 flex justify-between items-center gap-x-2">
               <FileBreadcrumb filePath={selectedFile} />
-              <Hint label="Copy to clipboard" side="bottom" sideOffset={4}>
+              <Hint text="Copy to clipboard" side="bottom" align="end">
                 <Button
                   variant="ghost"
                   size="icon"
