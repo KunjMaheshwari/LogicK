@@ -37,7 +37,7 @@ Execution constraints:
 - Prefer createOrUpdateFiles for code changes.
 - Use terminal only when necessary and avoid long-running commands.
 - Never run dev servers (npm run dev, next dev, next start, npm run start, next build, npm run build).
-- Use relative paths only (e.g. app/page.tsx).
+- Use relative paths only. If the app uses src-dir, write to src/app/*; otherwise app/*.
 - Return a clear task summary when done.
 `;
 
@@ -117,6 +117,26 @@ const runSandboxCommand = async (sandbox, command) => {
   }
 };
 
+const detectSrcDirLayout = async (sandbox) => {
+  try {
+    await sandbox.files.read("src/app/page.tsx");
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const toRuntimeProjectPath = (relativePath, usesSrcDir) => {
+  if (!usesSrcDir || relativePath.startsWith("src/")) return relativePath;
+
+  // Next.js src-dir projects keep app/components/lib/hooks/types under src/.
+  if (/^(app|components|lib|hooks|types|utils)\//.test(relativePath)) {
+    return `src/${relativePath}`;
+  }
+
+  return relativePath;
+};
+
 const runSandboxCommandWithTimeout = async (
   sandbox,
   command,
@@ -183,11 +203,44 @@ const safeWriteSandboxFile = async (sandbox, path, content, logger = console) =>
     await sandbox.files.write(path, content);
     return true;
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const needsParentDir = /does not exist|ENOENT/i.test(errorMessage);
+
+    if (needsParentDir) {
+      const parentDir = path.split("/").slice(0, -1).join("/");
+      if (parentDir) {
+        await runSandboxCommandWithTimeout(
+          sandbox,
+          `mkdir -p "${parentDir}"`,
+          10_000
+        );
+        try {
+          await sandbox.files.write(path, content);
+          return true;
+        } catch (retryError) {
+          logger.warn("File operation skipped due to sandbox restrictions", {
+            path,
+            error:
+              retryError instanceof Error ? retryError.message : String(retryError),
+          });
+          return false;
+        }
+      }
+    }
+
     logger.warn("File operation skipped due to sandbox restrictions", {
       path,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage,
     });
     return false;
+  }
+};
+
+const syncGeneratedFilesToSandbox = async (sandbox, files, logger = console) => {
+  const entries = Object.entries(files || {});
+  for (const [path, content] of entries) {
+    if (typeof content !== "string") continue;
+    await safeWriteSandboxFile(sandbox, path, content, logger);
   }
 };
 
@@ -385,6 +438,7 @@ export async function loadMessagesPhase(projectId) {
 export async function createAgentRunContext({ sandbox, previousMessages, logger = console }) {
   const fileReadCache = new Map();
   let agentIteration = 0;
+  const usesSrcDir = await detectSrcDirLayout(sandbox);
 
   const state = createState(
     {
@@ -481,7 +535,10 @@ export async function createAgentRunContext({ sandbox, previousMessages, logger 
             const dedupedFiles = new Map();
 
             for (const file of normalizedFiles) {
-              const relativePath = toRelativeSandboxPath(file.path);
+              const relativePath = toRuntimeProjectPath(
+                toRelativeSandboxPath(file.path),
+                usesSrcDir
+              );
               dedupedFiles.set(relativePath, file.content);
             }
 
@@ -561,7 +618,10 @@ export async function createAgentRunContext({ sandbox, previousMessages, logger 
 
             const contents = [];
             for (const file of requestedPaths) {
-              const relativePath = toRelativeSandboxPath(file);
+              const relativePath = toRuntimeProjectPath(
+                toRelativeSandboxPath(file),
+                usesSrcDir
+              );
               let content = fileReadCache.get(relativePath);
 
               if (typeof content !== "string") {
@@ -626,6 +686,7 @@ export async function createAgentRunContext({ sandbox, previousMessages, logger 
   return {
     network,
     state,
+    usesSrcDir,
     finalize: async (result) => {
       const generatedFiles = result.state.data.files || {};
 
@@ -695,11 +756,12 @@ export async function runAgentPhase({ sandbox, prompt, previousMessages, logger 
         logger.warn("Agent timeout reached. Returning fallback output.", {
           timeoutMs: AGENT_EXECUTION_TIMEOUT_MS,
         });
+        const fallbackPath = context.usesSrcDir ? "src/app/page.tsx" : "app/page.tsx";
         return {
           summary:
             "<task_summary>Generated a minimal fallback page because the agent exceeded time limits.</task_summary>",
           files: {
-            "app/page.tsx": `export default function Page() {
+            [fallbackPath]: `export default function Page() {
   return (
     <main className="min-h-screen p-8">
       <h1 className="text-2xl font-semibold">Generated App</h1>
@@ -739,6 +801,8 @@ export async function prepareRuntimePhase({ sandbox, files, logger = console }) 
   if (!packageJsonExists) {
     throw new Error("Missing package.json in sandbox root. Generated files are incomplete.");
   }
+
+  await syncGeneratedFilesToSandbox(sandbox, files, logger);
 
   const sandboxUrl = await ensurePreviewServer(sandbox, logger);
 
